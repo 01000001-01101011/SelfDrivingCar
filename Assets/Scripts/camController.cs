@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 public class camController : MonoBehaviour
 {
@@ -17,6 +19,9 @@ public class camController : MonoBehaviour
     private float scrollDelta;
 
 
+    private float mouseX;
+    private float mouseY;
+
     private void Start()
     {
         yRotTransform = yRotBody.transform;
@@ -25,38 +30,58 @@ public class camController : MonoBehaviour
         cam = gameObject.GetComponent<Camera>();
 
 
-        if (SystemInfo.deviceType != DeviceType.Desktop)//SystemInfo.deviceType == DeviceType.Handheld)
-        {
-
-        }
-        else
-        {
-            Cursor.lockState = CursorLockMode.Locked;
-        }
+        Cursor.lockState = CursorLockMode.Locked;
 
     }
 
     void Update()
     {
-        float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
-        float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
+        mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
+        mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
 
-        xRotation -= mouseY;
-        xRotation = Mathf.Clamp(xRotation, 0, 90);
+    }
 
-
-        xRotTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-        yRotTransform.Rotate(Vector3.up * mouseX);
-
-
-
-        scrollDelta = Input.mouseScrollDelta.y;
-        if (scrollDelta != 0)
+    private void LateUpdate()
+    {
+        if (!IsPointerOverUIObject())
         {
-            //cam.gameObject.transform.localPosition = cam.gameObject.transform.localPosition + Vector3.forward * scrollDelta * 5f;
-            cam.gameObject.transform.localPosition = new Vector3(0, 0, Mathf.Min(-10, cam.gameObject.transform.localPosition.z + scrollDelta * 5f));
+            xRotation -= mouseY;
+            xRotation = Mathf.Clamp(xRotation, 0, 90);
+
+
+            xRotTransform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+            yRotTransform.Rotate(Vector3.up * mouseX);
+
+
+
+            scrollDelta = Input.mouseScrollDelta.y;
+            if (scrollDelta != 0)
+            {
+                //cam.gameObject.transform.localPosition = cam.gameObject.transform.localPosition + Vector3.forward * scrollDelta * 5f;
+                cam.gameObject.transform.localPosition = new Vector3(0, 0, Mathf.Min(-10, cam.gameObject.transform.localPosition.z + scrollDelta * 5f));
+            }
         }
     }
+
+    /// <summary>
+    /// Checks if the pointer, or any touch is over (Raycastable) UI.
+    /// WARNING: ONLY WORKS RELIABLY IF IN LateUpdate/LateTickable!
+    /// </summary>
+    private bool IsPointerOverUIObject()
+    {
+        if (EventSystem.current.IsPointerOverGameObject())
+            return true;
+
+        for (int touchIndex = 0; touchIndex < Input.touchCount; touchIndex++)
+        {
+            Touch touch = Input.GetTouch(touchIndex);
+            if (EventSystem.current.IsPointerOverGameObject(touch.fingerId))
+                return true;
+        }
+
+        return false;
+    }
+
 }
 
 
