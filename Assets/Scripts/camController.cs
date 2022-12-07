@@ -4,6 +4,7 @@ using System.Threading;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
+
 public class camController : MonoBehaviour
 {
     public player player;

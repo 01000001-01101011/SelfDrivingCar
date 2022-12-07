@@ -3,10 +3,15 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
+using Unity.MLAgents;
+using Unity.MLAgents.Actuators;
+using Unity.MLAgents.Sensors;
+using PathCreation;
+
 
 
 [RequireComponent(typeof(Rigidbody))]
-public class carDriver : MonoBehaviour
+public class carDriver : Agent
 {
     internal enum driveType
     {
@@ -107,6 +112,7 @@ public class carDriver : MonoBehaviour
     /// Read only.  Car's exact current speed in m/s.
     /// </summary>
     public float speed;
+    public PathCreator path;
 
 
 
@@ -126,18 +132,20 @@ public class carDriver : MonoBehaviour
     //private float force = 0;
 
     private float steerAmount = 0;
+    private GameObject lastTrigger;
 
 
+    public float reward;
+    public int mistakes = 0;
 
-
-    // Start is called before the first frame update
-    void Start()
+    public override void Initialize()
     {
+
         masterController.usingMobileControls = false;
         rb = gameObject.GetComponent<Rigidbody>();
         startLocation = gameObject.transform.position;
         startRotation = gameObject.transform.rotation;
-
+        lastTrigger = gameObject;
 
         rb.ResetCenterOfMass();
         rb.centerOfMass = rb.centerOfMass + CGOffset;
@@ -162,7 +170,7 @@ public class carDriver : MonoBehaviour
             GameObject gWheel = wheel.transform.GetChild(0).gameObject;
             physicsGraphicsPair.Add(wheel, gWheel);
             gWheelsOriginalPos.Add(gWheel, gWheel.transform.localPosition);
-            
+
             foreach (GameObject sWheel in steeringWheels)
             {
                 if (wheel == sWheel)
@@ -179,7 +187,7 @@ public class carDriver : MonoBehaviour
         //    gWheelsOriginalPos.Add(gWheel, newVec);
         //}
 
-        foreach(GameObject wheel in Wheels)
+        foreach (GameObject wheel in Wheels)
         {
             GameObject particleThingy = Instantiate(driftParticles, wheel.transform.position, Quaternion.identity, wheel.transform);
             wheelsParticlesPair.Add(wheel, particleThingy.GetComponent<ParticleSystem>().emission);
@@ -192,6 +200,96 @@ public class carDriver : MonoBehaviour
 
     }
 
+
+
+    public override void CollectObservations(VectorSensor sensor)
+    {
+        sensor.AddObservation(speed);
+        sensor.AddObservation(Vector3.Dot(rb.velocity, gameObject.transform.forward));
+    }
+
+    public override void OnEpisodeBegin()
+    {
+        //gameObject.transform.position = path.path.GetClosestPointOnPath(gameObject.transform.position) + gameObject.transform.up;
+        //gameObject.transform.eulerAngles = path.path.GetRotation(path.path.GetClosestDistanceAlongPath(gameObject.transform.position)).eulerAngles + new Vector3(0, 90, -90);
+        gameObject.transform.position = lastTrigger.transform.position + gameObject.transform.up;
+        gameObject.transform.rotation = lastTrigger.transform.rotation;
+        rb.angularVelocity = Vector3.zero;
+        rb.velocity = Vector3.zero;
+        mistakes = 0;
+    }
+
+    public override void Heuristic(in ActionBuffers actionsOut)
+    {
+        if (Input.anyKeyDown)
+        {
+            masterController.usingMobileControls = false;
+        }
+
+        if (canControl)
+        {
+            //vertical = Input.GetAxis("Vertical");
+            //horizontal = Input.GetAxis("Horizontal");
+
+            effectiveHorizontalInputIncrement = horizontalInputIncrement / Mathf.Max(1, speed / 20);
+
+            if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W))
+            {
+                forward();
+            }
+            else if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S))
+            {
+                back();
+            }
+            else if (!masterController.usingMobileControls)
+            {
+                if (vertical > 0) { vertical -= Mathf.Min(Mathf.Abs(0 - vertical), Mathf.Abs(verticalInputDecay)); }
+                if (vertical < 0) { vertical += Mathf.Min(Mathf.Abs(0 - vertical), Mathf.Abs(verticalInputDecay)); }
+            }
+
+            if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A))
+            {
+                left();
+            }
+            else if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D))
+            {
+                right();
+            }
+            else if (!masterController.usingMobileControls)
+            {
+                //if (horizontal < 0) { horizontal += horizontalInputDecay; }
+                //if (horizontal > 0) { horizontal -= horizontalInputDecay; }
+                if (horizontal < 0) { horizontal += Mathf.Min(Mathf.Abs(0 - horizontal), Mathf.Abs(horizontalInputDecay)); }
+                if (horizontal > 0) { horizontal -= Mathf.Min(Mathf.Abs(0 - horizontal), Mathf.Abs(horizontalInputDecay)); }//This version ensures that the input is never stuck at a value near but != 0, leading to the car either driving forward on its own,
+                                                                                                                            //failing to brake, off centre steering, etc.  Prevents nightmares. DO NOT REMOVE.
+            }
+
+
+
+            brake = /*Input.GetKey(KeyCode.Space) ? 1 : 0;*/Input.GetAxis("Jump");
+            braking = !(brake == 0);
+
+            rb.angularDrag = brake + baseAngularDrag + (grounded ? baseAngularDrag * speed : 0);
+            rb.drag = brake / 8 + 0.1f;
+        }
+        else
+        {
+            vertical = 0f;
+            braking = true;
+        }
+
+        var continuousActionsOut = actionsOut.ContinuousActions;
+        continuousActionsOut[0] = vertical;
+        continuousActionsOut[1] = horizontal;
+        continuousActionsOut[2] = brake;
+    }
+
+    public override void OnActionReceived(ActionBuffers actions)
+    {
+        vertical = actions.ContinuousActions[0];
+        horizontal = actions.ContinuousActions[1];
+        brake = actions.ContinuousActions[2];
+    }
 
 
 
@@ -381,67 +479,9 @@ public class carDriver : MonoBehaviour
     void Update()
     {
         speed = rb.velocity.magnitude;
-        if (Input.anyKeyDown)
-        {
-            masterController.usingMobileControls = false;
-
-        }
 
 
-        if (canControl)
-        {
-            //vertical = Input.GetAxis("Vertical");
-            //horizontal = Input.GetAxis("Horizontal");
-
-            effectiveHorizontalInputIncrement = horizontalInputIncrement / Mathf.Max(1, speed / 20);
-
-            if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W))
-            {
-                forward();
-            }
-            else if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S))
-            {
-                back();
-            }
-            else if (!masterController.usingMobileControls)
-            {
-                if (vertical > 0) { vertical -= Mathf.Min(Mathf.Abs(0 - vertical), Mathf.Abs(verticalInputDecay)); }
-                if (vertical < 0) { vertical += Mathf.Min(Mathf.Abs(0 - vertical), Mathf.Abs(verticalInputDecay)); }
-            }
-
-            if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A))
-            {
-                left();
-            }
-            else if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D))
-            {
-                right();
-            }
-            else if (!masterController.usingMobileControls)
-            {
-                //if (horizontal < 0) { horizontal += horizontalInputDecay; }
-                //if (horizontal > 0) { horizontal -= horizontalInputDecay; }
-                if (horizontal < 0) { horizontal += Mathf.Min(Mathf.Abs(0 - horizontal), Mathf.Abs(horizontalInputDecay)); }
-                if (horizontal > 0) { horizontal -= Mathf.Min(Mathf.Abs(0 - horizontal), Mathf.Abs(horizontalInputDecay)); }//This version ensures that the input is never stuck at a value near but != 0, leading to the car either driving forward on its own,
-                                                                                                                            //failing to brake, off centre steering, etc.  Prevents nightmares. DO NOT REMOVE.
-            }
-
-
-
-            brake = /*Input.GetKey(KeyCode.Space) ? 1 : 0;*/Input.GetAxis("Jump");
-            braking = !(brake == 0);
-
-            rb.angularDrag = brake + baseAngularDrag + (grounded ? baseAngularDrag * speed : 0);
-            rb.drag = brake/8 + 0.1f;
-        }
-        else
-        {
-            vertical = 0f;
-            braking = true;
-        }
-
-
-        if (Input.GetKeyDown(KeyCode.K))
+        if (Input.GetKeyDown(KeyCode.K) && canControl)
         {
             rb.isKinematic = !rb.isKinematic;
         }
@@ -474,6 +514,8 @@ public class carDriver : MonoBehaviour
             }
         }
 
+        reward = GetCumulativeReward();
+        if (mistakes > 100) { EndEpisode(); }
     }
 
     private void OnCollisionStay(Collision other)
@@ -544,5 +586,27 @@ public class carDriver : MonoBehaviour
     }
 
 
+    private void OnTriggerEnter(Collider other)
+    {
+        if (Vector3.Dot(gameObject.transform.position-other.transform.position, other.transform.forward) < 0)
+        {
+            AddReward(0.2f);
+        }
+        else
+        {
+            AddReward(-0.1f);
+            mistakes += 1;
+        }
+        lastTrigger = other.gameObject;
+        Debug.DrawRay(other.transform.position, other.transform.forward, Color.green, 5.0f);
+    }
+
+    private void OnCollisionEnter(Collision other)
+    {
+        //if (other.impulse.sqrMagnitude > 50000000f)
+        //{
+            EndEpisode();
+        //}
+    }
 }
 
