@@ -64,14 +64,14 @@ namespace PathCreation.Examples {
                 verts[vertIndex + 0] = vertSideA;
                 verts[vertIndex + 1] = vertSideB;
                 // Add bottom of road vertices
-                verts[vertIndex + 2] = vertSideA - localUp * thickness;
-                verts[vertIndex + 3] = vertSideB - localUp * thickness;
+                //verts[vertIndex + 2] = vertSideA - localUp * thickness;
+                //verts[vertIndex + 3] = vertSideB - localUp * thickness;
 
                 // Duplicate vertices to get flat shading for sides of road
-                verts[vertIndex + 4] = verts[vertIndex + 0];
-                verts[vertIndex + 5] = verts[vertIndex + 1];
-                verts[vertIndex + 6] = verts[vertIndex + 2];
-                verts[vertIndex + 7] = verts[vertIndex + 3];
+                //verts[vertIndex + 4] = verts[vertIndex + 0];
+                //verts[vertIndex + 5] = verts[vertIndex + 1];
+                //verts[vertIndex + 6] = verts[vertIndex + 2];
+                //verts[vertIndex + 7] = verts[vertIndex + 3];
 
                 // Set uv on y axis to path time (0 at start of path, up to 1 at end of path)
                 uvs[vertIndex + 0] = new Vector2 (0, path.times[i]);

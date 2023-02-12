@@ -13,6 +13,9 @@ using PathCreation;
 [RequireComponent(typeof(Rigidbody))]
 public class carDriver : Agent
 {
+
+    public bool debug = false;
+
     internal enum driveType
     {
         FrontWheelDrive,
@@ -132,20 +135,21 @@ public class carDriver : Agent
     //private float force = 0;
 
     private float steerAmount = 0;
-    private GameObject lastTrigger;
 
 
     public float reward;
-    public int mistakes = 0;
+    public GameObject checker;
+    public float deadzone = 0.1f;
 
     public override void Initialize()
     {
+        Physics.autoSyncTransforms = false;
+
 
         masterController.usingMobileControls = false;
         rb = gameObject.GetComponent<Rigidbody>();
         startLocation = gameObject.transform.position;
         startRotation = gameObject.transform.rotation;
-        lastTrigger = gameObject;
 
         rb.ResetCenterOfMass();
         rb.centerOfMass = rb.centerOfMass + CGOffset;
@@ -210,13 +214,12 @@ public class carDriver : Agent
 
     public override void OnEpisodeBegin()
     {
-        //gameObject.transform.position = path.path.GetClosestPointOnPath(gameObject.transform.position) + gameObject.transform.up;
-        //gameObject.transform.eulerAngles = path.path.GetRotation(path.path.GetClosestDistanceAlongPath(gameObject.transform.position)).eulerAngles + new Vector3(0, 90, -90);
-        gameObject.transform.position = lastTrigger.transform.position + gameObject.transform.up;
-        gameObject.transform.rotation = lastTrigger.transform.rotation;
+        float dist = path.path.GetClosestDistanceAlongPath(gameObject.transform.position) + Random.RandomRange(0, 50);
+        gameObject.transform.position = path.path.GetPointAtDistance(dist);
+        gameObject.transform.rotation = path.path.GetRotationAtDistance(dist);
+        gameObject.transform.localEulerAngles = new Vector3(gameObject.transform.localEulerAngles.x, gameObject.transform.localEulerAngles.y, gameObject.transform.localEulerAngles.z + 90);
         rb.angularVelocity = Vector3.zero;
         rb.velocity = Vector3.zero;
-        mistakes = 0;
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
@@ -228,11 +231,9 @@ public class carDriver : Agent
 
         if (canControl)
         {
-            //vertical = Input.GetAxis("Vertical");
-            //horizontal = Input.GetAxis("Horizontal");
 
             effectiveHorizontalInputIncrement = horizontalInputIncrement / Mathf.Max(1, speed / 20);
-
+            
             if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W))
             {
                 forward();
@@ -257,14 +258,12 @@ public class carDriver : Agent
             }
             else if (!masterController.usingMobileControls)
             {
-                //if (horizontal < 0) { horizontal += horizontalInputDecay; }
-                //if (horizontal > 0) { horizontal -= horizontalInputDecay; }
                 if (horizontal < 0) { horizontal += Mathf.Min(Mathf.Abs(0 - horizontal), Mathf.Abs(horizontalInputDecay)); }
                 if (horizontal > 0) { horizontal -= Mathf.Min(Mathf.Abs(0 - horizontal), Mathf.Abs(horizontalInputDecay)); }//This version ensures that the input is never stuck at a value near but != 0, leading to the car either driving forward on its own,
                                                                                                                             //failing to brake, off centre steering, etc.  Prevents nightmares. DO NOT REMOVE.
             }
 
-
+            
 
             brake = /*Input.GetKey(KeyCode.Space) ? 1 : 0;*/Input.GetAxis("Jump");
             braking = !(brake == 0);
@@ -289,6 +288,27 @@ public class carDriver : Agent
         vertical = actions.ContinuousActions[0];
         horizontal = actions.ContinuousActions[1];
         brake = actions.ContinuousActions[2];
+
+        
+        if (vertical < deadzone && vertical > -deadzone)
+        {
+            vertical = 0;
+        }
+        if (horizontal < deadzone && horizontal > -deadzone)
+        {
+            horizontal = 0;
+        }
+        if (brake < deadzone)
+        {
+            brake = 0;
+        }
+
+        if (debug)
+        {
+            Debug.Log($"Vertical: {vertical}\nHorizontal: {horizontal}\nBrake: {brake}");
+        }
+
+
     }
 
 
@@ -320,6 +340,17 @@ public class carDriver : Agent
             rb.centerOfMass = rb.centerOfMass + CGOffset;
             CGSet = true;
         }
+         
+        checker.transform.position = path.path.GetClosestPointOnPath(gameObject.transform.position);
+
+        AddReward(
+            (10f - (checker.transform.position - gameObject.transform.position).magnitude)
+            * speed * 0.001f
+        );
+        //Debug.Log(GetCumulativeReward());
+
+
+
 
 
         bool touchingGround = false;
@@ -337,7 +368,7 @@ public class carDriver : Agent
                 
         grounded = false;
 
-        d = damping / Mathf.Max(1, speed / 50);
+        d = damping / Mathf.Max(1.0f, speed / 50.0f);
 
         sV = 0;
         fV = 0;
@@ -358,16 +389,10 @@ public class carDriver : Agent
                 grounded = true;
 
                 //suspension physics
-                compression = ((suspensionDistance - rayHit.distance)/suspensionDistance);
+                compression = Mathf.Clamp01((suspensionDistance - rayHit.distance)/suspensionDistance);
 
-                if (rb.velocity.sqrMagnitude < 800)
-                {
-                    v = Vector3.Dot(rb.GetPointVelocity(wheel.transform.position), -wheel.transform.up);
-                }
-                else
-                {
-                    v = rb.GetPointVelocity(wheel.transform.position).y*0.1f;
-                }
+                //v = Vector3.Dot(rb.GetPointVelocity(wheel.transform.position), -wheel.transform.up);
+                v = -rb.GetPointVelocity(wheel.transform.position).y;
 
                 force = suspensionTightness * compression + (d * v);
                 rb.AddForceAtPosition(rayHit.normal * force * rb.mass, rayHit.point);
@@ -375,23 +400,28 @@ public class carDriver : Agent
                     
                 //steering and sideways vector compensation
                 Vector3 forwardVector = wheel.transform.forward;
-                if (canControl)
+
+
+
+
+
+                //////// control block ////////
+
+                //Forward power
+                rb.AddForceAtPosition(vertical * Vector3.Cross(rayHit.normal, wheel.transform.right) * power * (braking ? 0 : 1) * rb.mass + wheel.transform.right * steerAmount, /*rayHit.point);//*/wheel.transform.position);
+
+
+                foreach (GameObject sWheel in steeringWheels)
                 {
-                    //Forward power
-                    rb.AddForceAtPosition(vertical * Vector3.Cross(rayHit.normal, wheel.transform.right) * power * (braking ? 0 : 1) * rb.mass + wheel.transform.right * steerAmount, /*rayHit.point);//*/wheel.transform.position);
-
-
-                    foreach (GameObject sWheel in steeringWheels)
+                    if (wheel == sWheel)
                     {
-                        if (wheel == sWheel)
-                        {
-                            steerAmount = (horizontal / 2);//  / Mathf.Max(1, speed / 20);
-                            forwardVector = forwardVector + wheel.transform.right * steerAmount;
+                        steerAmount = (horizontal / 2);//  / Mathf.Max(1, speed / 20);
+                        forwardVector = forwardVector + wheel.transform.right * steerAmount;
                                 
-                        }
                     }
-
                 }
+
+
 
 
 
@@ -489,6 +519,8 @@ public class carDriver : Agent
 
         if (Input.GetKeyDown(KeyCode.R) && canControl)
         {
+            if (Input.GetKey(KeyCode.LeftAlt)) EndEpisode();
+
             if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
             {
                 Debug.Log("Car Full Reset");
@@ -507,15 +539,20 @@ public class carDriver : Agent
             else
             {
                 Debug.Log("Orientation Reset");
-                gameObject.transform.position = gameObject.transform.position + Vector3.up * 2;
-                gameObject.transform.rotation = Quaternion.Euler(0, gameObject.transform.rotation.eulerAngles.y, 0);
+                gameObject.transform.position = new Vector3(Mathf.Round(gameObject.transform.position.x), Mathf.Round(gameObject.transform.position.y), Mathf.Round(gameObject.transform.position.z)) + Vector3.up * 2f;
+                gameObject.transform.rotation = Quaternion.Euler(0, 0, 0);
                 rb.velocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
             }
         }
 
         reward = GetCumulativeReward();
-        if (mistakes > 100) { EndEpisode(); }
+    }
+
+    private void OnCollisionEnter(Collision other)
+    {
+        AddReward(-200);
+        EndEpisode();
     }
 
     private void OnCollisionStay(Collision other)
@@ -530,12 +567,17 @@ public class carDriver : Agent
         {
             sparkEmission.enabled = false;
         }
+
+        AddReward(-200);
+        EndEpisode();
     }
 
     private void OnCollisionExit(Collision collision)
     {
         sparkEmission.enabled = false;
     }
+
+
 
     void OnDrawGizmos()
     {
@@ -583,30 +625,6 @@ public class carDriver : Agent
         horizontal = horizontal > -1 ? horizontal - effectiveHorizontalInputIncrement : horizontal;
         if (horizontal > 0) { horizontal -= horizontalInputDecay; }
 
-    }
-
-
-    private void OnTriggerEnter(Collider other)
-    {
-        if (Vector3.Dot(gameObject.transform.position-other.transform.position, other.transform.forward) < 0)
-        {
-            AddReward(0.2f);
-        }
-        else
-        {
-            AddReward(-0.1f);
-            mistakes += 1;
-        }
-        lastTrigger = other.gameObject;
-        Debug.DrawRay(other.transform.position, other.transform.forward, Color.green, 5.0f);
-    }
-
-    private void OnCollisionEnter(Collision other)
-    {
-        //if (other.impulse.sqrMagnitude > 50000000f)
-        //{
-            EndEpisode();
-        //}
     }
 }
 

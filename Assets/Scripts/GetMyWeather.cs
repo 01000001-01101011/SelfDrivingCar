@@ -5,8 +5,6 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System;
 using UnityEngine.Networking;
-using Newtonsoft.Json;
-
 
 public class GetMyWeather : MonoBehaviour {
 

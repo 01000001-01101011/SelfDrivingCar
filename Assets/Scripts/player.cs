@@ -161,8 +161,8 @@ public class player : MonoBehaviour
             }
         }
 
-        if (usingMobileControls && !mobileControls.active) { mobileControls.SetActive(true); }
-        else if (!usingMobileControls && mobileControls.active) { mobileControls.SetActive(false); }   //FIX ME
+        if (usingMobileControls && !mobileControls.activeSelf) { mobileControls.SetActive(true); }
+        else if (!usingMobileControls && mobileControls.activeSelf) { mobileControls.SetActive(false); }   //FIX ME
 
 
         if (right)

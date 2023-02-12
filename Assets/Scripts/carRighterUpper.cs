@@ -8,7 +8,7 @@ public class carRighterUpper : MonoBehaviour
 
     private Rigidbody rb;
     private bool panic;
-    private bool panicDone;
+//    private bool panicDone;
     private float torqueMultiplier = 0;
 
 
@@ -64,13 +64,13 @@ public class carRighterUpper : MonoBehaviour
         if (transform.rotation.eulerAngles.z > 90 && transform.rotation.eulerAngles.z < 270)
         {
             panic = true;
-            panicDone = false;
+            //panicDone = false;
         }
     }
 
-    private void OnCollisionExit(Collision other)
-    {
-        panicDone = true;
-    }
+    //private void OnCollisionExit(Collision other)
+    //{
+    //    panicDone = true;
+    //}
 
 }

@@ -90,7 +90,7 @@ public class plane : MonoBehaviour
 
     void FireMissile()
     {
-        GameObject missileToFire;
+        //GameObject missileToFire;
 
         //while (missileToFire == null)
         //{
