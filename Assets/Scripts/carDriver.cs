@@ -91,7 +91,7 @@ public class carDriver : Agent
     [Space]
 
     public Vector3 steeringAngleMultiplier = new Vector3(0, 1, 0.2f);
-    
+
     [Space]
 
 
@@ -140,6 +140,9 @@ public class carDriver : Agent
     public float reward;
     public GameObject checker;
     public float deadzone = 0.1f;
+
+    [HideInInspector]
+    public float episodeTime = 0;
 
     public override void Initialize()
     {
@@ -214,12 +217,13 @@ public class carDriver : Agent
 
     public override void OnEpisodeBegin()
     {
-        float dist = path.path.GetClosestDistanceAlongPath(gameObject.transform.position) + Random.RandomRange(0, 50);
-        gameObject.transform.position = path.path.GetPointAtDistance(dist);
-        gameObject.transform.rotation = path.path.GetRotationAtDistance(dist);
-        gameObject.transform.localEulerAngles = new Vector3(gameObject.transform.localEulerAngles.x, gameObject.transform.localEulerAngles.y, gameObject.transform.localEulerAngles.z + 90);
+        episodeTime = 0;
+        float dist = path.path.GetClosestDistanceAlongPath(gameObject.transform.position) + Random.RandomRange(-200, 2000);
         rb.angularVelocity = Vector3.zero;
         rb.velocity = Vector3.zero;
+        gameObject.transform.rotation = path.path.GetRotationAtDistance(dist);
+        gameObject.transform.localEulerAngles = new Vector3(gameObject.transform.localEulerAngles.x, gameObject.transform.localEulerAngles.y /* + random orientation*/, gameObject.transform.localEulerAngles.z + 90);
+        gameObject.transform.position = path.path.GetPointAtDistance(dist) + Vector3.up * 0.8f;// + gameObject.transform.right * -3.0f;
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
@@ -233,7 +237,7 @@ public class carDriver : Agent
         {
 
             effectiveHorizontalInputIncrement = horizontalInputIncrement / Mathf.Max(1, speed / 20);
-            
+
             if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W))
             {
                 forward();
@@ -263,7 +267,7 @@ public class carDriver : Agent
                                                                                                                             //failing to brake, off centre steering, etc.  Prevents nightmares. DO NOT REMOVE.
             }
 
-            
+
 
             brake = /*Input.GetKey(KeyCode.Space) ? 1 : 0;*/Input.GetAxis("Jump");
             braking = !(brake == 0);
@@ -289,7 +293,7 @@ public class carDriver : Agent
         horizontal = actions.ContinuousActions[1];
         brake = actions.ContinuousActions[2];
 
-        
+
         if (vertical < deadzone && vertical > -deadzone)
         {
             vertical = 0;
@@ -340,14 +344,18 @@ public class carDriver : Agent
             rb.centerOfMass = rb.centerOfMass + CGOffset;
             CGSet = true;
         }
-         
+
         checker.transform.position = path.path.GetClosestPointOnPath(gameObject.transform.position);
 
         AddReward(
-            (10f - (checker.transform.position - gameObject.transform.position).magnitude)
-            * speed * 0.001f
+            Mathf.Max(0, 10f - (checker.transform.position - (gameObject.transform.position + gameObject.transform.right * 3.0f)).magnitude)
+            * /*speed*/-Vector3.Dot(rb.velocity, gameObject.transform.forward) * 0.001f / ((checker.transform.position - gameObject.transform.position).magnitude + 1f)
         );
+
+        AddReward(0.01f);
+
         //Debug.Log(GetCumulativeReward());
+
 
 
 
@@ -365,7 +373,7 @@ public class carDriver : Agent
         }
 
         rb.AddForce(Vector3.Dot(rb.velocity, gameObject.transform.up) * transform.up * -liftCoefficient * rb.mass);
-                
+
         grounded = false;
 
         d = damping / Mathf.Max(1.0f, speed / 50.0f);
@@ -389,7 +397,7 @@ public class carDriver : Agent
                 grounded = true;
 
                 //suspension physics
-                compression = Mathf.Clamp01((suspensionDistance - rayHit.distance)/suspensionDistance);
+                compression = Mathf.Clamp01((suspensionDistance - rayHit.distance) / suspensionDistance);
 
                 //v = Vector3.Dot(rb.GetPointVelocity(wheel.transform.position), -wheel.transform.up);
                 v = -rb.GetPointVelocity(wheel.transform.position).y;
@@ -397,7 +405,7 @@ public class carDriver : Agent
                 force = suspensionTightness * compression + (d * v);
                 rb.AddForceAtPosition(rayHit.normal * force * rb.mass, rayHit.point);
 
-                    
+
                 //steering and sideways vector compensation
                 Vector3 forwardVector = wheel.transform.forward;
 
@@ -417,7 +425,7 @@ public class carDriver : Agent
                     {
                         steerAmount = (horizontal / 2);//  / Mathf.Max(1, speed / 20);
                         forwardVector = forwardVector + wheel.transform.right * steerAmount;
-                                
+
                     }
                 }
 
@@ -435,7 +443,7 @@ public class carDriver : Agent
                 }
                 //svN = (sV == 0)? 0 : sV/Mathf.Abs(sV);//sideways vector normalized
                 svN = Mathf.Sign(sV);
-                
+
                 forwardSlip = Mathf.Abs(fV) * brake + Mathf.Max(fV * vertical, 0);
                 //possibly, Mathf.Max(-(fV * vertical), 0)
                 //incorporate based on expected (based on applied force) vs actual acceleration
@@ -443,14 +451,14 @@ public class carDriver : Agent
                 //float neutral = Mathf.Abs(vertical) == 0 ? 1.5f : 1.0f;
                 float neutral = Mathf.Abs(vertical) * spinningWheelsGrip + neutralGrip;
 
-                sfR = wheelFrictionCurve.Evaluate(Mathf.Abs((sV /*maybe incorporate forward slip in here when you have a proper plan*/ )/curveEvaluationMax)) * curveMultiplier * svN * neutral;
+                sfR = wheelFrictionCurve.Evaluate(Mathf.Abs((sV /*maybe incorporate forward slip in here when you have a proper plan*/ ) / curveEvaluationMax)) * curveMultiplier * svN * neutral;
                 rb.AddForceAtPosition(sideVector * sfR * sidewaysFrictionMultiplier * rb.mass, wheel.transform.position);
 
 
 
 
                 //braking
-                f = braking && !(brake > 0)? brakeTorque : brake*brakeTorque;//'braking &&' exists so that it the car will stop when not being controlled. Don't try to understand it unless you want a headache
+                f = braking && !(brake > 0) ? brakeTorque : brake * brakeTorque;//'braking &&' exists so that it the car will stop when not being controlled. Don't try to understand it unless you want a headache
                 fV = Mathf.Abs(fV) < 0.01 ? 0.01f : fV;
                 baseF = braking ? brakeTorqueBase : 0;
 
@@ -485,7 +493,7 @@ public class carDriver : Agent
 
 
             GameObject gWheel = physicsGraphicsPair[wheel];
-            gWheel.transform.localPosition = gWheelsOriginalPos[gWheel] + (gWheel.transform.InverseTransformDirection(wheel.transform.up) * (compression*suspensionDistance-suspensionDistance + wheelRadius));
+            gWheel.transform.localPosition = gWheelsOriginalPos[gWheel] + (gWheel.transform.InverseTransformDirection(wheel.transform.up) * (compression * suspensionDistance - suspensionDistance + wheelRadius));
             gWheel.transform.GetChild(0).GetChild(0).RotateAround(gWheel.transform.position, gWheel.transform.right, (braking ? 0 : fV * 0.8f / wheelRadius));
 
 
@@ -510,6 +518,7 @@ public class carDriver : Agent
     {
         speed = rb.velocity.magnitude;
 
+        episodeTime += Time.deltaTime;
 
         if (Input.GetKeyDown(KeyCode.K) && canControl)
         {
@@ -547,12 +556,15 @@ public class carDriver : Agent
         }
 
         reward = GetCumulativeReward();
+        if (gameObject.transform.position.y < -20)
+        {
+            AddReward(-50);
+            EndEpisode();
+        }
     }
 
     private void OnCollisionEnter(Collision other)
     {
-        AddReward(-200);
-        EndEpisode();
     }
 
     private void OnCollisionStay(Collision other)
@@ -568,7 +580,7 @@ public class carDriver : Agent
             sparkEmission.enabled = false;
         }
 
-        AddReward(-200);
+        if (!(episodeTime > 1.0f || other.transform.root.GetComponent<carDriver>().episodeTime > 1.0f)) AddReward(-50);
         EndEpisode();
     }
 
@@ -591,6 +603,8 @@ public class carDriver : Agent
             Gizmos.DrawCube(wheel.transform.position, Vector3.one * 0.1f);
             Gizmos.color = Color.red;
             Gizmos.DrawCube(wheel.transform.position-(wheel.transform.up*suspensionDistance), Vector3.one * 0.05f);
+
+            Gizmos.DrawCube(gameObject.transform.position + gameObject.transform.right * 3.0f, new Vector3(0.1f, 0.5f, 0.1f));
 
             if (Application.isPlaying)
             {
