@@ -1,0 +1,55 @@
+I will train my AI agents in a multistep process gradually making the system more and more complex.  
+
+The first iteration was a simple test of the AI system to make sure everything was working and to test out my significantly improved custom vehicle solution. The AI is very basic, using raycasts to detect the walls of the track, in order to avoid the walls and drive quickly.  This has been done countless times, and is not very special. As expected, it worked well.  In fact, it was almost impossible for me to keep up with, let alone beat! This first version can be seen here: https://github.com/01000001-01101011/ai-test/
+
+The second iteration is a camera based model.  It has a camera on the front of car, that can see the track ahead.  This camera (in grayscale) is the only information about the world that the AI has, in addition to its speed and how much of that speed is forward relative to the car (this allows the car to detect and execute drifts (a real driver can feel this as lateral g force)).
+
+Next iterations will be improved with:
+	side facing cameras
+	visual noise (pedestrians, buildings, etc on the sides)
+	obstacle avoidance and traffic safety.
+
+Third iteration: Camera based model like before, but this time there are other cars as well.  So initially the model is trained the same as the first one, but then it is given new obstacles.  Each car is on a separate track, which only it can see, and all the tracks interweave, forcing the cars to learn to avoid collisions with others. If they collide with other vehicles, the training episode ends and the model is punished. After converting to this new system, the cars learned surprisingly quickly to find and enter lanes when spawned outside their lane.  It is significant to note that I have left some items in the environment which may interfere with the AI systems, because I wanted them to learn regardless of distractions. The cars are both able to see other cars, and smoke left behind by them which interferes with the camera.  They still learned well. 
+
+If you think about it, this method of training cars to drive around in their own lanes and then dodge other cars occasionally is very good, because in real life, most of the time we drive around normally. If the cars were forced to dodge constantly, they might be more likely to overreact and behave unpredictably during normal, safe driving. Media 8. Media 6 and 7 are examples of how unpredictable AI can be if it sees something even slightly new that it has not seen before. The floor was removed, so it saw black instead of gray.  This caused it to fail HORRIBLY.  One fully trained lankeeping agent once got lost, and the track was rather far away (but still in view).  The AI just went in circles, not knowing what to do.
+
+I accidentally did bad science, by combining two changes and then wondering why the second change wasn't working. Camera was placed lower, which reduces visiblity significantly. AI was incompetent when trying to drive being able to see other cars. Trying again with higher camera and single road as before. Inter car collision enabled. Also disabled headlights because those were probably bad for performance.
+
+Okay now what they're doing is going back and forth in plcae with their nose on the track to avoid hitting anyone else and farm points.  Will add reward for staying on rigth side of road next iteration.
+
+next versions:
+	side cameras
+	visual noise (which are also obstacles; have to stay on the road)
+	maybe two front cameras?  One long view one wide view.  Probably not.  one wide view is sufficient
+
+added reward for staying on right side, now they can lanekeep. Now enabled collisions and made the track with a bit less sharp turns, more realistic. Currently they seem to be attracted to other cars.  this makes sense because following another car would be good for staying in the lane, even when it's a car coming at you because then it's still in the centre of the lane. Reward dropping immediately, as expected.  But hopefully they'll learn to avoid collisions better soon. It's already begun to rise again. In just 10 minutes they've actually learned to stop following each other too closely.
+Edit: Rising reward was a fluke. It's stably bad. 
+
+Training did not work.  They are not learning to avoid each other at all. Starting again from scratch with collisions on
+I'm hoping they'll collectively learn that it is good to go forward. If not, I'll have to reward based on the dot product of velocity and forward rather than overall speed.
+They did not seem to be learning that, so now training again with reward positive for forward, 0 for backwards. Also reduced camera resolution from 128x32 to 64x32 for performance reasons
+
+The agents are now, again, able to stay in their lane but cannot avoid each other.  For next training round, will try to give the agents higher res cameras.  For now, I'm going to add more cars and see what happens.
+
+Doubled cars, and also implemented some code that doesn't punish them for spawn deaths, because that was adding bias probably. 
+
+With triple camera system, to see the lane markings on either side, the cars eventually learned to do lanekeeping very well, but failed on the obstacle avoidance.  They keep hitting cars on the other side of the lane, thinking its the car in front.  And they can't slow down to avoid hitting another car either.  
+
+I've given up on integrating the systems into a single system, so now I'm going to prove obstacle avoidance and lanekeeping separately. 
+
+Figure 11 shows obstacle avoidance works.  Real road situations are far less complex than what is shown here, even in extentuating circumstances.  This takes a lot of skill to do well. I tried myself, and it's genuinely quite tricky to maintain speed and avoid obstacles as well as the AI is doing.  The AI is rewarded based on how fast it goes, and what it is doing does seem to be optimal given these rules.  If I trained for longer, I expect it would get even better. Emergent behaviour can also be seen, since the AI trained with several instances of itself present in the same world.  While the AI is about as good as a human when it comes to dodging around static objects, the AI is able to drive much more safely when all the other cars are using the same neural network.  Think of it this way.  If there's are two cars on course for a head on collision, if one driver is asleep, the distance between the cars before the collision will be smaller.  However if both drivers dodge right, the distance between the cars will be much greater, therefore reducing the chances of an accident. However if one driver goes right, and the other left, they'd still collide with each other. Birds do this too!  In the event of an imminent collision, birds will always go left to avoid a collision. 
+
+I've given up on trying to integrate lanekeeping and obstacle avoidance into one, so now I am going to create a city where cars just drive around in their lanes.  Very simple but it should be sort of impressive. 
+^ Training is going well. Continuously increasing. Not great at sharp turns yet. 
+
+	
+
+
+first, cars learn that going forward = good.mov was the first iteration.  it shows how the cars begin learning.
+trained human vs untrained AI.mov was a complete joke
+unstable physics.mov was the first partially successful iteration.  Just getting the environment working.  Physics were unstable because the cars were driving faster than I would have expected, and this was causing the physics bugs to kill them earlier than expected.
+After fixing the physics, the AI was very good but still not amazing.  I tweaked some parameters of the environment to allow it to learn even better.  
+trained AI.mov, trained AI single lap.mov, and super fast car.mov are all recordings of the above.  
+This first experiment has been stored here: https://github.com/01000001-01101011/ai-test/
+https://01000001-01101011.github.io/ai-test/
+https://01000001-01101011.github.io/lanekeeping-ai/
